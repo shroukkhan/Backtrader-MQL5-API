@@ -1,44 +1,66 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
-from datetime import datetime, timedelta  # For datetime objects
+from datetime import datetime, timedelta
 
 import backtrader as bt
 
-from backtradermql5 import MTraderStore
+from backtradermql5.mt5store import MTraderStore
 
-# Import the backtrader platform
 
-if __name__ == '__main__':
-    # connect to metatrader
-    host = '127.0.0.1'
-    data_folder = 'C:\\Users\\skhan\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\MQL5\\Files\\Data\\'
-    symbol = 'EURUSD'
-    timeframe = 'M1'
-    store = MTraderStore(host=host, debug=False, datatimeout=100)
+class SmaCross(bt.SignalStrategy):
 
-    store.reset_server()
-    start_date = datetime.now() - timedelta(minutes=500)
+    def __init__(self):
+        self.buy_order = None
+        self.live_data = False
 
-    # filepath = f'{data_folder}{symbol}-{timeframe}.csv'
-    # if not exists(filepath):
-    #     store.write_csv(symbol='EURUSD',
-    #                     fromdate=start_date,
-    #                     timeframe=bt.TimeFrame.Minutes
-    #                     )
+    def next(self):
+        if self.buy_order is None:
+            self.buy_order = self.buy_bracket(limitprice=1.13, stopprice=1.10, size=0.1, exectype=bt.Order.Market)
 
-    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Ticks, fromdate=start_date)
+        if self.live_data:
+            cash = self.broker.getcash()
 
-    cerebro = bt.Cerebro()
-    broker = store.getbroker(use_positions=True)
-    cerebro.setbroker(broker)
+            # Cancel order
+            if self.buy_order is not None:
+                self.cancel(self.buy_order[0])
 
-    start_date = datetime.now() - timedelta(minutes=500)
+        else:
+            # Avoid checking the balance during a backfill. Otherwise, it will
+            # Slow things down.
+            cash = 'NA'
 
-    cerebro.resampledata(data,
-                         timeframe=bt.TimeFrame.Seconds,
-                         compression=30
-                         )
-    print('Starting Portfolio Value: %.2f' % cerebro.broker.getcash())
-    cerebro.run(stdstats=False)
-    cerebro.plot(style='candlestick', volume=False)
+        for data in self.datas:
+            print(
+                f'{data.datetime.datetime()} - {data._name} | Cash {cash} | O: {data.open[0]} H: {data.high[0]} L: {data.low[0]} C: {data.close[0]} V:{data.volume[0]}')
+
+    def notify_data(self, data, status, *args, **kwargs):
+        dn = data._name
+        dt = datetime.now()
+        msg = f'Data Status: {data._getstatusname(status)}'
+        print(dt, dn, msg)
+        if data._getstatusname(status) == 'LIVE':
+            self.live_data = True
+        else:
+            self.live_data = False
+
+
+cerebro = bt.Cerebro()
+cerebro.addstrategy(SmaCross)
+
+store = MTraderStore()
+
+# comment next 2 lines to use backbroker for backtesting with MTraderStore
+broker = store.getbroker(use_positions=True)
+cerebro.setbroker(broker)
+
+start_date = datetime.now() - timedelta(minutes=500)
+
+data = store.getdata(dataname='EURUSD', timeframe=bt.TimeFrame.Ticks,
+                     fromdate=start_date)  # , useask=True, historical=True)
+# the parameter "useask" will request the ask price insetad if the default bid price
+
+cerebro.resampledata(data,
+                     timeframe=bt.TimeFrame.Seconds,
+                     compression=30
+                     )
+
+cerebro.run(stdstats=False)
+cerebro.plot(style='candlestick', volume=False)

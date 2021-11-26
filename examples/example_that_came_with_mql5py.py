@@ -125,9 +125,9 @@ class SmaCross(bt.SignalStrategy):
 # If MetaTrader runs locally
 # host = "localhost"
 # If Metatrader runs at differnt address
-host = "192.168.56.124"
+host = "127.0.0.1"
 
-store = MTraderStore(host=host, debug=False, datatimeout=10)
+store = MTraderStore(host=host, debug=True, datatimeout=10)
 
 cerebro = bt.Cerebro()
 

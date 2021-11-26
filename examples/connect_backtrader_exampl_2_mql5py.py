@@ -11,6 +11,13 @@ class SmaCross(bt.SignalStrategy):
         self.buy_order = None
         self.live_data = False
 
+    def log(self, txt, dt=None):
+        '''
+            Logging function for this strategy
+        '''
+        dt = dt or self.datas[0].datetime.date(0)
+        print('%s, %s' % (dt.isoformat(), txt))
+
     def next(self):
         if self.buy_order is None:
             self.buy_order = self.buy_bracket(limitprice=1.13, stopprice=1.10, size=0.1, exectype=bt.Order.Market)

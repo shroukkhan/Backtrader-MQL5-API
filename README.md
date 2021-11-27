@@ -14,7 +14,7 @@ Working in production on Debian 10.
 
 ## About the Project
 
-This is the Backtrader part of the project. MQL5 side of this project is located here: [MQL5 - JSON - API](https://github.com/khramkov/MQL5-JSON-API)
+This is the Backtrader part of the project. MQL5 side of this project is located here: [MQL5 - JSON - API](https://github.com/shroukkhan/MQL5-JSON-API)
 
 In development:
 
@@ -28,7 +28,7 @@ In development:
 
 ## Documentation
 
-See [MQL5 - JSON - API documentation](https://github.com/khramkov/MQL5-JSON-API) for better understanding.
+See [MQL5 - JSON - API documentation](https://github.com/shroukkhan/MQL5-JSON-API) for better understanding.
 
 You can create market or pending order with the default `backtrader` command.
 

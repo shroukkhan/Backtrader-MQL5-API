@@ -15,20 +15,38 @@ class Mode(Enum):
     STATIC = 2
 
 
-def download_csv(store: MTraderStore) -> str:
+class TestStrategy(bt.Strategy):
+
+    def log(self, txt, dt=None):
+        '''Logging utility function'''
+        dt: datetime = dt or self.datas[0].datetime.datetime(0)
+        print('%s, %s' % (dt.isoformat(), txt))
+
+    def __init__(self):
+        # keep a reference to close line in data[0] dataseries
+        self.dataclose = self.datas[0].close
+
+    def next(self):
+        # Simply log the closeing price of the series
+        self.log('Close, %.5f' % self.dataclose[0])
+
+        if self.dataclose[0] < self.dataclose[-1] < self.dataclose[-2]:
+            self.log('BUY CREATE, %.5f' % self.dataclose[0])
+            self.buy()
+
+
+def download_csv(store: MTraderStore, timeframe: str, compression: int) -> str:
     '''
     Downloads csv data and returns the path..
     '''
     location = '../data'
-    frame = bt.TimeFrame.Minutes
-    compress = 60
     symbol = 'EURUSD'
-    filename = f'{location}/{symbol}-{store.get_granularity(frame=frame, compression=compress)}.csv'
+    filename = f'{location}/{symbol}-{store.get_granularity(frame=timeframe, compression=compression)}.csv'
     if not os.path.isfile(filename):
         store.write_csv(
             symbol=symbol,
-            timeframe=frame,
-            compression=compress,  # M5 = {timeframe}{compression}
+            timeframe=timeframe,
+            compression=compression,  # M5 = {timeframe}{compression}
             fromdate=datetime.datetime(2021, 10, 1),
             todate=datetime.datetime.now()
         )
@@ -39,24 +57,12 @@ def download_csv(store: MTraderStore) -> str:
 
 def get_data(store, mode: Mode):
     if mode == Mode.STATIC:
-        dataname = download_csv(store)
-        data = MT5CSVData(
-            dataname=dataname,
-            nullvalue=0.0,
-            dtformat=('%Y.%m.%d %H:%M:%S '),
-            fromdate=datetime.datetime(2021, 10, 1),
-            datetime=0,
-            time=-1,
-            open=1,
-            high=2,
-            low=3,
-            close=4,
-            volume=5,
-            openinterest=-1,
-            reverse=False)
-
-        # data = bt.feeds.MT4CSVData(
-        #     dataname=dataname)
+        timeframe = bt.TimeFrame.Minutes
+        compression = 60
+        dataname = download_csv(store, timeframe, compression)
+        data = MT5CSVData(dataname=dataname,
+                          timeframe=timeframe,
+                          compression=compression)
 
         return data
 
@@ -67,16 +73,17 @@ if __name__ == '__main__':
     # mql5 store
     host = '127.0.0.1'  # where is mt5 running?
     store = MTraderStore(host=host, debug=True, datatimeout=10)
-    download_csv(store)
 
     broker = store.getbroker(
         use_positions=True)  # use_positions = get any existing open position from the broker as wel
     cerebro.setbroker(broker)
 
     data = get_data(store, mode=Mode.STATIC)
-    cerebro.adddata(data)
+    cerebro.adddata(data)  # insert order 0
+
+    cerebro.addstrategy(TestStrategy)  # add order 0 :P
 
     # cerebro.broker.setcash(100000.00)
-    print('Starting portfolio value: %.2f cash: %.2f' % (cerebro.broker.getvalue(), cerebro.broker.getcash()))
+    print('Starting portfolio value: %.5f cash: %.5f' % (cerebro.broker.getvalue(), cerebro.broker.getcash()))
     cerebro.run()
-    print('Ending portfolio value: %.2f cash: %.2f' % (cerebro.broker.getvalue(), cerebro.broker.getcash()))
+    print('Ending portfolio value: %.5f cash: %.5f' % (cerebro.broker.getvalue(), cerebro.broker.getcash()))

@@ -1,73 +1,82 @@
-from datetime import datetime, timedelta
+from __future__ import (absolute_import, division, print_function, unicode_literals)
+
+import datetime
+import os
+from enum import Enum
 
 import backtrader as bt
 
 from backtradermql5.mt5store import MTraderStore
+from examples.MT5CSVData import MT5CSVData
 
 
-class SmaCross(bt.SignalStrategy):
-
-    def __init__(self):
-        self.buy_order = None
-        self.live_data = False
-
-    def log(self, txt, dt=None):
-        '''
-            Logging function for this strategy
-        '''
-        dt = dt or self.datas[0].datetime.date(0)
-        print('%s, %s' % (dt.isoformat(), txt))
-
-    def next(self):
-        if self.buy_order is None:
-            self.buy_order = self.buy_bracket(limitprice=1.13, stopprice=1.10, size=0.1, exectype=bt.Order.Market)
-
-        if self.live_data:
-            cash = self.broker.getcash()
-
-            # Cancel order
-            if self.buy_order is not None:
-                self.cancel(self.buy_order[0])
-
-        else:
-            # Avoid checking the balance during a backfill. Otherwise, it will
-            # Slow things down.
-            cash = 'NA'
-
-        for data in self.datas:
-            print(
-                f'{data.datetime.datetime()} - {data._name} | Cash {cash} | O: {data.open[0]} H: {data.high[0]} L: {data.low[0]} C: {data.close[0]} V:{data.volume[0]}')
-
-    def notify_data(self, data, status, *args, **kwargs):
-        dn = data._name
-        dt = datetime.now()
-        msg = f'Data Status: {data._getstatusname(status)}'
-        print(dt, dn, msg)
-        if data._getstatusname(status) == 'LIVE':
-            self.live_data = True
-        else:
-            self.live_data = False
+class Mode(Enum):
+    LIVE = 1,
+    STATIC = 2
 
 
-cerebro = bt.Cerebro()
-cerebro.addstrategy(SmaCross)
+def download_csv(store: MTraderStore) -> str:
+    '''
+    Downloads csv data and returns the path..
+    '''
+    location = '../data'
+    frame = bt.TimeFrame.Minutes
+    compress = 60
+    symbol = 'EURUSD'
+    filename = f'{location}/{symbol}-{store.get_granularity(frame=frame, compression=compress)}.csv'
+    if not os.path.isfile(filename):
+        store.write_csv(
+            symbol=symbol,
+            timeframe=frame,
+            compression=compress,  # M5 = {timeframe}{compression}
+            fromdate=datetime.datetime(2021, 10, 1),
+            todate=datetime.datetime.now()
+        )
+    if os.path.isfile(filename):
+        return filename
+    raise FileNotFoundError(f'CSV not found at {filename}')
 
-store = MTraderStore()
 
-# comment next 2 lines to use backbroker for backtesting with MTraderStore
-broker = store.getbroker(use_positions=True)
-cerebro.setbroker(broker)
+def get_data(store, mode: Mode):
+    if mode == Mode.STATIC:
+        dataname = download_csv(store)
+        data = MT5CSVData(
+            dataname=dataname,
+            nullvalue=0.0,
+            dtformat=('%Y.%m.%d %H:%M:%S '),
+            fromdate=datetime.datetime(2021, 10, 1),
+            datetime=0,
+            time=-1,
+            open=1,
+            high=2,
+            low=3,
+            close=4,
+            volume=5,
+            openinterest=-1,
+            reverse=False)
 
-start_date = datetime.now() - timedelta(minutes=500)
+        # data = bt.feeds.MT4CSVData(
+        #     dataname=dataname)
 
-data = store.getdata(dataname='EURUSD', timeframe=bt.TimeFrame.Ticks,
-                     fromdate=start_date)  # , useask=True, historical=True)
-# the parameter "useask" will request the ask price insetad if the default bid price
+        return data
 
-cerebro.resampledata(data,
-                     timeframe=bt.TimeFrame.Seconds,
-                     compression=30
-                     )
 
-cerebro.run(stdstats=False)
-cerebro.plot(style='candlestick', volume=False)
+if __name__ == '__main__':
+    cerebro = bt.Cerebro()
+
+    # mql5 store
+    host = '127.0.0.1'  # where is mt5 running?
+    store = MTraderStore(host=host, debug=True, datatimeout=10)
+    download_csv(store)
+
+    broker = store.getbroker(
+        use_positions=True)  # use_positions = get any existing open position from the broker as wel
+    cerebro.setbroker(broker)
+
+    data = get_data(store, mode=Mode.STATIC)
+    cerebro.adddata(data)
+
+    # cerebro.broker.setcash(100000.00)
+    print('Starting portfolio value: %.2f cash: %.2f' % (cerebro.broker.getvalue(), cerebro.broker.getcash()))
+    cerebro.run()
+    print('Ending portfolio value: %.2f cash: %.2f' % (cerebro.broker.getvalue(), cerebro.broker.getcash()))
